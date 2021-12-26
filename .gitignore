@@ -1,5 +1,7 @@
 # Pycharm
 .idea/
+helper*.py
+helper*.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
