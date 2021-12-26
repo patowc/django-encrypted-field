@@ -1,2 +1,2 @@
 django>=4.0
-cryptography>=36.0.1
+pycryptodomex>=3.12.0
