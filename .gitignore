@@ -2,6 +2,10 @@
 .idea/
 helper*.py
 helper*.sh
+# Potential databases
+*.sqlite
+*.db
+db.*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
