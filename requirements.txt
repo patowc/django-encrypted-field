@@ -1,2 +1,3 @@
+# Surely will work with django versions under 4.0, but just to be careful.
 django>=4.0
 pycryptodomex>=3.12.0
