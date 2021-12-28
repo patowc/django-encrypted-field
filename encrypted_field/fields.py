@@ -1,0 +1,473 @@
+"""
+This file includes all the details and definitions for a model.EncryptedField
+that can be used in django projects.
+
+This version just uses ChaCha20 Poly1305 algorithm, but in future releases
+more algorithms will be added.
+
+It is easy to use:
+(1) ~$ pip install django-encrypted-field
+(2) from encrypted_field import EncryptedField
+(3) class MyModel(models.Model):
+        encrypted_field = EncryptedField()
+
+Now, whenever you save or retrieve values they will be managed through an
+encryption-decryption process transparent to the user.
+"""
+import typing
+import json
+import logging
+
+from base64 import b64encode, b64decode
+from Cryptodome.Cipher import (
+    ChaCha20_Poly1305, ChaCha20, Salsa20,
+    AES
+)
+from Cryptodome.Random import get_random_bytes
+
+from django.conf import settings
+from django.core.exceptions import FieldError, ImproperlyConfigured
+from django.db import models
+from django.utils.translation import gettext as _
+
+
+# Try to avoid log-name-context collisions defaulting to __name__
+logger = logging.getLogger(__name__)
+
+
+__all__ = [
+    'EncryptedField'
+]
+
+ALGORITHM_CHACHA20_POLY1305 = 'CC20P'
+ALGORITHM_CHACHA20 = 'CC20'
+ALGORITHM_SALSA20 = 'SS20'
+
+ALGORITHM_AES_GCM = 'AGCM'
+ALGORITHM_AES_SIV = 'ASIV'
+ALGORITHM_AES_EAX = 'AEAX'
+ALGORITHM_AES_CCM = 'ACCM'
+ALGORITHM_AES_OCB = 'AOCB'
+
+AES_KEY_SIZES = (
+    ('A128', _('128 bits / 16 bytes long')),
+    ('A192', _('192 bits / 24 bytes long')),
+    ('A256', _('256 bits / 32 bytes long')),
+)
+
+ENCRYPTION_ALGORITHM = (
+    (ALGORITHM_CHACHA20_POLY1305, _('ChaCha20 Poly1305')),
+    (ALGORITHM_CHACHA20, _('ChaCha20')),
+    (ALGORITHM_SALSA20, _('Salsa20')),
+    (ALGORITHM_AES_GCM, _('AES GCM')),
+    (ALGORITHM_AES_SIV, _('AES SIV')),
+    (ALGORITHM_AES_EAX, _('AEX EAX')),
+    (ALGORITHM_AES_CCM, _('AES CCM')),
+    (ALGORITHM_AES_OCB, _('AES OCB')),
+)
+
+
+ALLOWED_ENCRYPTION_ALGORITHMS = [
+    ALGORITHM_CHACHA20_POLY1305,
+    ALGORITHM_CHACHA20,
+    ALGORITHM_SALSA20,
+    ALGORITHM_AES_GCM,
+    ALGORITHM_AES_SIV,
+    ALGORITHM_AES_EAX,
+    ALGORITHM_AES_CCM,
+    ALGORITHM_AES_OCB,
+]
+
+
+def encrypt_chacha20_poly(data: str, header: bytes, key: bytes, hide_algorithm: bool = False):
+    # key must be 32 bytes long.
+    key_len = len(key)
+    if key_len != 32:
+        if settings.DEBUG is True:
+            logger.error('encrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+        raise Exception('encrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+
+    algorithm = ALGORITHM_CHACHA20_POLY1305
+    cipher = ChaCha20_Poly1305.new(key=key)
+    cipher.update(header)
+    ciphertext, tag = cipher.encrypt_and_digest(str.encode(data))
+
+    dict_values = dict()
+    # Nonce will be 12 bytes long for ChaCha20 Poly1305 by default.
+    # In future releases will add support for XChaCha passing 24 bytes.
+    dict_values['nonce'] = b64encode(cipher.nonce).decode('utf-8')
+    dict_values['header'] = b64encode(header).decode('utf-8')
+    dict_values['ciphertext'] = b64encode(ciphertext).decode('utf-8')
+    # Tag must be used to validate the integrity.
+    dict_values['tag'] = b64encode(tag).decode('utf-8')
+
+    if hide_algorithm is False:
+        dict_values['algorithm'] = algorithm
+
+    return json.dumps(dict_values)
+
+
+def decrypt_chacha20_poly(encrypted_data: dict, key: bytes):
+    nonce = b64decode(encrypted_data['nonce'])
+    header = b64decode(encrypted_data['header'])
+    ciphertext = b64decode(encrypted_data['ciphertext'])
+    tag = b64decode(encrypted_data['tag'])
+
+    cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
+    cipher.update(header)
+    plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+    return plaintext.decode("utf-8")
+
+
+def encrypt_chacha20(data: str, key: bytes, hide_algorithm: bool = False):
+    # key must be 32 bytes long.
+    key_len = len(key)
+    if key_len != 32:
+        if settings.DEBUG is True:
+            logger.error('encrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+        raise Exception('encrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+
+    algorithm = ALGORITHM_CHACHA20
+    cipher = ChaCha20.new(key=key)
+    ciphertext = cipher.encrypt(str.encode(data))
+
+    dict_values = dict()
+    # Nonce will be 8 bytes long for ChaCha20 by default.
+    # In future releases will add support for XChaCha passing 24 bytes.
+    dict_values['nonce'] = b64encode(cipher.nonce).decode('utf-8')
+    dict_values['ciphertext'] = b64encode(ciphertext).decode('utf-8')
+
+    if hide_algorithm is False:
+        dict_values['algorithm'] = algorithm
+
+    return json.dumps(dict_values)
+
+
+def decrypt_chacha20(encrypted_data: dict, key: bytes):
+    nonce = b64decode(encrypted_data['nonce'])
+    ciphertext = b64decode(encrypted_data['ciphertext'])
+    cipher = ChaCha20.new(key=key, nonce=nonce)
+    plaintext = cipher.decrypt(ciphertext)
+    return plaintext.decode("utf-8")
+
+
+def encrypt_salsa20(data: str, key: bytes, hide_algorithm: bool = False):
+    # key must be 32 bytes long.
+    key_len = len(key)
+    if key_len != 32:
+        if settings.DEBUG is True:
+            logger.error('encrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+        raise Exception('encrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+
+    algorithm = ALGORITHM_SALSA20
+    cipher = Salsa20.new(key=key)
+    ciphertext = cipher.encrypt(str.encode(data))
+
+    dict_values = dict()
+    # Nonce will be 8 bytes long for ChaCha20 by default.
+    # In future releases will add support for XChaCha passing 24 bytes.
+    dict_values['nonce'] = b64encode(cipher.nonce).decode('utf-8')
+    dict_values['ciphertext'] = b64encode(ciphertext).decode('utf-8')
+
+    if hide_algorithm is False:
+        dict_values['algorithm'] = algorithm
+
+    return json.dumps(dict_values)
+
+
+def decrypt_salsa20(encrypted_data: dict, key: bytes):
+    nonce = b64decode(encrypted_data['nonce'])
+    ciphertext = b64decode(encrypted_data['ciphertext'])
+    cipher = Salsa20.new(key=key, nonce=nonce)
+    plaintext = cipher.decrypt(ciphertext)
+    return plaintext.decode("utf-8")
+
+
+def encrypt_AES(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM_AES_GCM, hide_algorithm: bool = False):
+    mode = AES.MODE_GCM
+    # key must be 16, 24 or 32 bytes long.
+    key_len = len(key)
+    if key_len not in AES_KEY_SIZES:
+        if settings.DEBUG is True:
+            logger.error('encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len)
+        raise Exception('encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len)
+
+    if algorithm == ALGORITHM_AES_GCM:
+        mode = AES.MODE_GCM
+    elif algorithm == ALGORITHM_AES_SIV:
+        mode = AES.MODE_SIV
+    elif algorithm == ALGORITHM_AES_EAX:
+        mode = AES.MODE_EAX
+    elif algorithm == ALGORITHM_AES_CCM:
+        mode = AES.MODE_CCM
+    elif algorithm == ALGORITHM_AES_OCB:
+        mode = AES.MODE_OCB
+    else:
+        if settings.DEBUG is True:
+            logger.error('encrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
+        raise Exception('encrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
+
+    cipher = AES.new(key=key, mode=mode)
+    cipher.update(header)
+    ciphertext, tag = cipher.encrypt_and_digest(str.encode(data))
+
+    dict_values = dict()
+    dict_values['nonce'] = b64encode(cipher.nonce).decode('utf-8')
+    dict_values['header'] = b64encode(header).decode('utf-8')
+    dict_values['ciphertext'] = b64encode(ciphertext).decode('utf-8')
+    # Tag must be used to validate the integrity.
+    dict_values['tag'] = b64encode(tag).decode('utf-8')
+
+    if hide_algorithm is False:
+        dict_values['algorithm'] = algorithm
+
+    return json.dumps(dict_values)
+
+
+def decrypt_AES(encrypted_data: dict, key: bytes):
+    mode = None
+    nonce = b64decode(encrypted_data['nonce'])
+    header = b64decode(encrypted_data['header'])
+    ciphertext = b64decode(encrypted_data['ciphertext'])
+    tag = b64decode(encrypted_data['tag'])
+    algorithm = b64decode(encrypted_data['algorithm'])
+
+    if algorithm == ALGORITHM_AES_GCM:
+        mode = AES.MODE_GCM
+    elif algorithm == ALGORITHM_AES_SIV:
+        mode = AES.MODE_SIV
+    elif algorithm == ALGORITHM_AES_EAX:
+        mode = AES.MODE_EAX
+    elif algorithm == ALGORITHM_AES_CCM:
+        mode = AES.MODE_CCM
+    elif algorithm == ALGORITHM_AES_OCB:
+        mode = AES.MODE_OCB
+    else:
+        if settings.DEBUG is True:
+            logger.error('decrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
+
+        raise Exception('decrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
+
+    cipher = AES.new(key, mode, nonce=nonce)
+    cipher.update(header)
+    plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+    return plaintext.decode("utf-8")
+
+
+class EncryptedField(models.Field):
+    """
+    The django model field derived from models.Field.
+
+    Relevant attributes here are:
+
+    - description: this is the field description for the model.
+    - _header: [BYTES] here you will set the initiation header for ChaCha20.
+    - _key: [BYTES] this is the encryption key. Will default if the settings
+    variable settings.DJANGO_ENCRYPTED_FIELD_KEY is not set.
+
+    """
+    description: str = _('An encrypted field that uses ChaCha20 poly1305.')
+    _algorithm: typing.Optional[str] = ALGORITHM_CHACHA20_POLY1305
+    _hide_algorithm: typing.Optional[bool] = False
+    _internal_type: str = 'TextField'
+    _header: typing.Optional[bytes] = b'JDDjangoEncryptedField'
+    _key: bytes = None
+
+    def __init__(self,
+                 header: typing.Optional[bytes] = None,
+                 algorithm: typing.Optional[str] = ALGORITHM_CHACHA20_POLY1305,
+                 hide_algorithm: typing.Optional[bool] = False,
+                 *args, **kwargs):
+        """
+        __init__ function to set the field. The only relevant parameter here
+        is header (see the definition before).
+
+        This field cannot be primary_key, nor unique, nor db_index, so if set
+        to a True value, will raise an Exception.
+
+        :param header: optional. The initiation header for the algorithm.
+        :param args: variable arguments.
+        :param kwargs: variable arguments in a dictionary.
+        """
+        # If header is passed
+        if header:
+            self._header = header
+
+        # The encryption algorithm to use. By default: ALGORITHM_CHACHA20_POLY1305
+        if algorithm != self._algorithm:
+            if algorithm in ALLOWED_ENCRYPTION_ALGORITHMS:
+                self._algorithm = algorithm
+            else:
+                if settings.DEBUG is True:
+                    logger.error(
+                        "%s does not support this algorithm [%s]." % (self.__class__.__name__,
+                                                                      str(algorithm))
+                    )
+
+                raise ImproperlyConfigured(
+                    "%s does not support primary_key different from False (or None)."
+                    % self.__class__.__name__
+                )
+
+        # If we want to store only data, not the encryption algorithm details.
+        if hide_algorithm is True:
+            self._hide_algorithm = True
+
+        # Note: primary_key must not be set to True in anyway. This field
+        # is not viable for this purpose.
+        primary_key = kwargs.get('primary_key', False)
+        if primary_key:
+            if settings.DEBUG is True:
+                logger.error(
+                    "%s does not support primary_key different from False (or None)." % self.__class__.__name__
+                )
+
+            raise ImproperlyConfigured(
+                "%s does not support primary_key different from False (or None)."
+                % self.__class__.__name__
+            )
+
+        # Note: unique must not be set to True in anyway. This field
+        # is not viable for this purpose.
+        unique = kwargs.get('unique', False)
+        if unique:
+            if settings.DEBUG is True:
+                logger.error(
+                    "%s does not support unique different from False (or None)." % self.__class__.__name__
+                )
+
+            raise ImproperlyConfigured(
+                "%s does not support unique different from False (or None)."
+                % self.__class__.__name__
+            )
+
+        # Note: db_index must not be set to True in anyway. This field
+        # is not viable for this purpose.
+        db_index = kwargs.get('db_index', False)
+        if db_index is True:
+            if settings.DEBUG is True:
+                logger.error(
+                    "%s does not support db_index different from False (or None)." % self.__class__.__name__
+                )
+            raise ImproperlyConfigured(
+                "%s does not support db_index different from False (or None)."
+                % self.__class__.__name__
+            )
+
+        super().__init__(*args, **kwargs)
+
+    def encrypt(self, data: str):
+        """
+        The encryption function. We opted for a simpler approach, letting the
+        user pass a standard string, instead of requiring "bytes" or similar.
+
+        All the required details will be within the object. Depending on the
+        algorithm in self._algorithm, we will choose a particular encryption
+        algorithm (valid in ALLOWED_ENCRYPTION_ALGORITHMS). By default the
+        ChaCha20 Poly1305 algorithm will be used (best option for most of the
+        scenarios and needs).
+
+        :param data: the data we want to encrypt, as string.
+        :return: will return a string including all the required elements and
+        the encrypted string in a dictionary.
+        """
+        if self._algorithm == ALGORITHM_CHACHA20_POLY1305:
+            key = None
+            try:
+                key = settings.DJANGO_ENCRYPTED_FIELD_KEY
+            except Exception as e:
+                if settings.DEBUG is True:
+                    logger.error(
+                        'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to encrypt.'
+                    )
+                raise Exception(
+                    'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
+                )
+
+            return encrypt_chacha20_poly(data=data,
+                                         header=self._header,
+                                         key=key,
+                                         hide_algorithm=self._hide_algorithm)
+        elif self._algorithm == ALGORITHM_CHACHA20_POLY1305:
+            key = None
+            try:
+                key = settings.DJANGO_ENCRYPTED_FIELD_KEY
+            except Exception as e:
+                if settings.DEBUG is True:
+                    logger.error(
+                        'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to encrypt.'
+                    )
+                raise Exception(
+                    'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
+                )
+            return encrypt_chacha20(data=data,
+                                    key=key,
+                                    hide_algorithm=self._hide_algorithm)
+
+        if settings.DEBUG is True:
+            logger.info('encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm))
+        raise Exception(
+            'encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm)
+        )
+
+    def decrypt(self, encrypted_data: str):
+        """
+        The decryption function. We opted for a simpler approach, passing
+        the encrypted data as string. Then conversion to bytes will be
+        performed in the specific functions to be able to operate.
+
+        :param encrypted_data: the encrypted data we want to decrypt.
+        :return: will return a string with the decrypted data.
+        """
+        data_b64_fields = None
+        algorithm = None
+
+        key = None
+        try:
+            key = settings.DJANGO_ENCRYPTED_FIELD_KEY
+        except Exception as e:
+            if settings.DEBUG is True:
+                logger.error(
+                    'encrypted-field.decrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to decrypt.'
+                )
+            raise Exception(
+                'encrypted-field.decrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
+            )
+
+        try:
+            data_b64_fields = json.loads(encrypted_data)
+        except Exception as e:
+            if settings.DEBUG is True:
+                logger.error(
+                    'encrypted_field.decrypt: encrypted_data doest not loads as JSON/Dict.'
+                )
+                logger.error('encrypted_field.decrypt: exception [%s]' % str(e))
+                return None
+
+        if 'algorithm' in data_b64_fields.keys():
+            algorithm = data_b64_fields.get('algorithm', None)
+
+        if not algorithm:
+            # TODO: iterate on encryption.
+            pass
+        else:
+            if algorithm == ALGORITHM_CHACHA20_POLY1305:
+                return decrypt_chacha20_poly(encrypted_data=data_b64_fields, key=key)
+
+            raise Exception('encrypted_field.decrypt: unsupported algorithm [%s]' % str(algorithm))
+
+    def get_internal_type(self):
+        return self._internal_type
+
+    def get_db_prep_save(self, value, connection):
+        if value == "" or value is None:
+            return None
+
+        return_value = self.encrypt(value)
+        return super().get_db_prep_save(return_value, connection)
+
+    def from_db_value(self, value, expression, connection, *args):
+        if value == "" or value is None:
+            return None
+
+        return self.to_python(self.decrypt(encrypted_data=value))
