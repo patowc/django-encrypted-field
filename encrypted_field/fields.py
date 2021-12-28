@@ -26,9 +26,8 @@ from Cryptodome.Cipher import (
 from Cryptodome.Random import get_random_bytes
 
 from django.conf import settings
-from django.core.exceptions import FieldError, ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models
-from django.utils.translation import gettext as _
 
 
 # Try to avoid log-name-context collisions defaulting to __name__
@@ -51,23 +50,23 @@ ALGORITHM_AES_CCM = 'ACCM'
 ALGORITHM_AES_OCB = 'AOCB'
 
 AES_KEY_SIZES = (
-    ('A128', _('128 bits / 16 bytes long')),
-    ('A192', _('192 bits / 24 bytes long')),
-    ('A256', _('256 bits / 32 bytes long')),
+    ('A128', '128 bits / 16 bytes long'),
+    ('A192', '192 bits / 24 bytes long'),
+    ('A256', '256 bits / 32 bytes long'),
 )
 
 AES_VALID_KEY_SIZES_IN_LEN = [16, 24, 32]
 
 
 ENCRYPTION_ALGORITHM = (
-    (ALGORITHM_CHACHA20_POLY1305, _('ChaCha20 Poly1305')),
-    (ALGORITHM_CHACHA20, _('ChaCha20')),
-    (ALGORITHM_SALSA20, _('Salsa20')),
-    (ALGORITHM_AES_GCM, _('AES GCM')),
-    (ALGORITHM_AES_SIV, _('AES SIV')),
-    (ALGORITHM_AES_EAX, _('AEX EAX')),
-    (ALGORITHM_AES_CCM, _('AES CCM')),
-    (ALGORITHM_AES_OCB, _('AES OCB')),
+    (ALGORITHM_CHACHA20_POLY1305, 'ChaCha20 Poly1305'),
+    (ALGORITHM_CHACHA20, 'ChaCha20'),
+    (ALGORITHM_SALSA20, 'Salsa20'),
+    (ALGORITHM_AES_GCM, 'AES GCM'),
+    (ALGORITHM_AES_SIV, 'AES SIV'),
+    (ALGORITHM_AES_EAX, 'AEX EAX'),
+    (ALGORITHM_AES_CCM, 'AES CCM'),
+    (ALGORITHM_AES_OCB, 'AES OCB'),
 )
 
 
@@ -409,7 +408,7 @@ class EncryptedField(models.Field):
     - hide_algorithm: if we want to omit the algorithm details in the db,
     falling back to read a settings variable to confirm which one is in place.
     """
-    description: str = _('An encrypted field that uses ChaCha20 poly1305.')
+    description: str = 'An encrypted field that uses ChaCha20 poly1305.'
     _algorithm: typing.Optional[str] = ALGORITHM_CHACHA20_POLY1305
     _hide_algorithm: typing.Optional[bool] = False
     _internal_type: str = 'TextField'
