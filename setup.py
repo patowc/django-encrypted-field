@@ -8,7 +8,7 @@ long_description = (
     open('README.md').read()
 )
 
-version = '1.0.0'
+version = '1.0.1'
 
 
 setup(
@@ -19,10 +19,10 @@ setup(
     ),
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/juliusdeane/django-encrypted-field',
+    url='https://github.com/patowc/django-encrypted-field',
     license='MIT',
     author='Román Ramírez',
-    author_email='cloud-svc@juliusdeane.com',
+    author_email='rramirez@rootedcon.com',
     packages=find_packages(),
     version=version,
     install_requires=[
