@@ -18,7 +18,7 @@ setup(
         'encrypted using ChaCha20 poly 1305, and other algorithms.'
     ),
     long_description=long_description,
-    long_description_content_type='text/x-md',
+    long_description_content_type='text/markdown',
     url='https://github.com/juliusdeane/django-encrypted-field',
     license='MIT',
     author='Román Ramírez',
