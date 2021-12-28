@@ -56,6 +56,9 @@ AES_KEY_SIZES = (
     ('A256', _('256 bits / 32 bytes long')),
 )
 
+AES_VALID_KEY_SIZES_IN_LEN = [16, 24, 32]
+
+
 ENCRYPTION_ALGORITHM = (
     (ALGORITHM_CHACHA20_POLY1305, _('ChaCha20 Poly1305')),
     (ALGORITHM_CHACHA20, _('ChaCha20')),
@@ -279,7 +282,7 @@ def decrypt_salsa20(encrypted_data: dict, key: bytes):
     return plaintext.decode("utf-8")
 
 
-def encrypt_AES(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM_AES_GCM, hide_algorithm: bool = False):
+def encrypt_aes(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM_AES_GCM, hide_algorithm: bool = False):
     """
     Primitive to encrypt with AES in several modes.
 
@@ -298,7 +301,7 @@ def encrypt_AES(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM
     mode = AES.MODE_GCM
     # key must be 16, 24 or 32 bytes long.
     key_len = len(key)
-    if key_len not in AES_KEY_SIZES:
+    if key_len not in AES_VALID_KEY_SIZES_IN_LEN:
         if settings.DEBUG is True:
             logger.error('encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len)
         raise Exception('encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len)
@@ -318,7 +321,16 @@ def encrypt_AES(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM
             logger.error('encrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
         raise Exception('encrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
 
-    cipher = AES.new(key=key, mode=mode)
+    if settings.UNIT_TESTING is True:
+        logger.critical('encrypt_AES: header=[%s] MODE=[%s]' % (header, mode))
+
+    if algorithm == ALGORITHM_AES_SIV:
+        # SIV without a nonce becomes DETERMINISTIC, and we don't want that.
+        # So we generate a nonce with get_random_bytes
+        cipher = AES.new(key=key, mode=mode, nonce=get_random_bytes(16))
+    else:
+        cipher = AES.new(key=key, mode=mode)
+
     cipher.update(header)
     ciphertext, tag = cipher.encrypt_and_digest(str.encode(data))
 
@@ -335,7 +347,7 @@ def encrypt_AES(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM
     return json.dumps(dict_values)
 
 
-def decrypt_AES(encrypted_data: dict, key: bytes):
+def decrypt_aes(encrypted_data: dict, key: bytes):
     """
     Primitive to decrypt with AES in different modes.
 
@@ -354,7 +366,11 @@ def decrypt_AES(encrypted_data: dict, key: bytes):
     header = b64decode(encrypted_data['header'])
     ciphertext = b64decode(encrypted_data['ciphertext'])
     tag = b64decode(encrypted_data['tag'])
-    algorithm = b64decode(encrypted_data['algorithm'])
+    algorithm = encrypted_data['algorithm']
+
+    if settings.UNIT_TESTING is True:
+        logger.critical('decrypt_AES: using algorithm [%s].' % algorithm)
+        logger.critical('decrypt_AES: Encrypted data [%s].' % encrypted_data)
 
     if algorithm == ALGORITHM_AES_GCM:
         mode = AES.MODE_GCM
@@ -519,6 +535,16 @@ class EncryptedField(models.Field):
             return encrypt_chacha20(data=data,
                                     key=key,
                                     hide_algorithm=self._hide_algorithm)
+        elif self._algorithm == ALGORITHM_SALSA20:
+            return encrypt_salsa20(data=data,
+                                   key=key,
+                                   hide_algorithm=self._hide_algorithm)
+        elif self._algorithm in ALGORITHM_AES_ALGORITHMS:
+            return encrypt_aes(data=data,
+                               header=self._header,
+                               key=key,
+                               algorithm=self._algorithm,
+                               hide_algorithm=self._hide_algorithm)
 
         if settings.DEBUG is True:
             logger.info('encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm))
@@ -581,7 +607,7 @@ class EncryptedField(models.Field):
         elif algorithm == ALGORITHM_SALSA20:
             return decrypt_salsa20(encrypted_data=data_b64_fields, key=key)
         elif algorithm in ALGORITHM_AES_ALGORITHMS:
-            return decrypt_AES(encrypted_data=data_b64_fields, key=key)
+            return decrypt_aes(encrypted_data=data_b64_fields, key=key)
 
         if settings.DEBUG is True:
             logger.error(
