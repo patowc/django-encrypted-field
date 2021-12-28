@@ -5,16 +5,17 @@ from setuptools import setup, find_packages
 
 
 long_description = (
-    open('README.md').read() + open('CHANGES.md').read())
+    open('README.md').read()
+)
 
-version = open('VERSION').read()
+version = '0.0.1'
 
 
 setup(
     name='django-encrypted-field',
     description=(
         'This is a Django Model Field class that can be '
-        'encrypted using different algorithms and settings.'
+        'encrypted using ChaCha20 poly 1305, and other algorithms.'
     ),
     long_description=long_description,
     long_description_content_type='text/x-md',
@@ -26,12 +27,12 @@ setup(
     version=version,
     install_requires=[
         'Django>=4.0',
-        'cryptography>=36.0.1'
+        'pycryptodomex>=3.12.0'
     ],
     classifiers=[
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
