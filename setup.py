@@ -22,7 +22,7 @@ setup(
     url='https://github.com/juliusdeane/django-encrypted-field',
     license='MIT',
     author='Román Ramírez',
-    author_email='me@juliusdeane.com',
+    author_email='cloud-svc@juliusdeane.com',
     packages=find_packages(),
     version=version,
     install_requires=[
