@@ -91,6 +91,8 @@ class AllTests(unittest.TestCase):
 
         """
         secret_message = 'A very critical secret.'
+
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'CC20P'
         base_model = MyModel()
         base_model.seed = secret_message
         base_model.save()
@@ -98,6 +100,7 @@ class AllTests(unittest.TestCase):
         test_base_instance = MyModel.objects.get(id=base_model.id)
         self.assertEqual(secret_message, test_base_instance.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'CC20P'
         base_model2 = MyModel2()
         base_model2.seed_hidden = secret_message
         base_model2.save()
@@ -105,6 +108,7 @@ class AllTests(unittest.TestCase):
         test_base_instance2 = MyModel2.objects.get(id=base_model2.id)
         self.assertEqual(secret_message, test_base_instance2.seed_hidden)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'CC20'
         base_model3 = MyModel3()
         base_model3.seed = secret_message
         base_model3.save()
@@ -112,6 +116,7 @@ class AllTests(unittest.TestCase):
         test_base_instance3 = MyModel3.objects.get(id=base_model3.id)
         self.assertEqual(secret_message, test_base_instance3.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'SS20'
         base_model4 = MyModel4()
         base_model4.seed = secret_message
         base_model4.save()
@@ -119,6 +124,7 @@ class AllTests(unittest.TestCase):
         test_base_instance4 = MyModel4.objects.get(id=base_model4.id)
         self.assertEqual(secret_message, test_base_instance4.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM'
         base_model5 = MyModel5()
         base_model5.seed = secret_message
         base_model5.save()
@@ -126,6 +132,7 @@ class AllTests(unittest.TestCase):
         test_base_instance5 = MyModel5.objects.get(id=base_model5.id)
         self.assertEqual(secret_message, test_base_instance5.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'ASIV'
         base_model6 = MyModel6()
         base_model6.seed = secret_message
         base_model6.save()
@@ -133,6 +140,7 @@ class AllTests(unittest.TestCase):
         test_base_instance6 = MyModel6.objects.get(id=base_model6.id)
         self.assertEqual(secret_message, test_base_instance6.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AEAX'
         base_model7 = MyModel7()
         base_model7.seed = secret_message
         base_model7.save()
@@ -140,6 +148,7 @@ class AllTests(unittest.TestCase):
         test_base_instance7 = MyModel7.objects.get(id=base_model7.id)
         self.assertEqual(secret_message, test_base_instance7.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'ACCM'
         base_model8 = MyModel8()
         base_model8.seed = secret_message
         base_model8.save()
@@ -147,6 +156,7 @@ class AllTests(unittest.TestCase):
         test_base_instance8 = MyModel8.objects.get(id=base_model8.id)
         self.assertEqual(secret_message, test_base_instance8.seed)
 
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AOCB'
         base_model9 = MyModel9()
         base_model9.seed = secret_message
         base_model9.save()
