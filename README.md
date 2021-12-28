@@ -22,13 +22,13 @@ Before using the EncryptedField in your projects, it is necessary to add some co
 
 See an example:
 ```
- DJANGO_ENCRYPTED_FIELD_KEY = b'12345678901234567890123456789012'
- # Recommended: using the environment.
- DJANGO_ENCRYPTED_FIELD_KEY = os.environ.get('ENV_DJANGO_ENCRYPTED_FIELD_KEY')
- DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'CC20P'
- DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'SS20'
- ...
- DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM'
+DJANGO_ENCRYPTED_FIELD_KEY = b'12345678901234567890123456789012'
+# Recommended: using the environment.
+DJANGO_ENCRYPTED_FIELD_KEY = os.environ.get('ENV_DJANGO_ENCRYPTED_FIELD_KEY')
+DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'CC20P'
+DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'SS20'
+...
+DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM'
 ```
 
 ## Usage in a django project
@@ -42,7 +42,7 @@ For example, if you want to start the easy way, with the default encryption (Cha
 Just configure the key:
 
 ```
- DJANGO_ENCRYPTED_FIELD_KEY = os.environ.get('ENV_DJANGO_ENCRYPTED_FIELD_KEY')
+DJANGO_ENCRYPTED_FIELD_KEY = os.environ.get('ENV_DJANGO_ENCRYPTED_FIELD_KEY')
 ```
 
 ### Second step: app/models.py
@@ -56,12 +56,12 @@ Take on mind the following restrictions:
 Now, import the field and add it to your very secret model:
 
 ```
- from django.db import models
- from encrypted_field import EncryptedField
+from django.db import models
+from encrypted_field import EncryptedField
 
 
- class MySecretModel(models.Model):
-     secret = EncryptedField()
+class MySecretModel(models.Model):
+    secret = EncryptedField()
 ```
 
 ### Third step: standard usage
@@ -74,40 +74,39 @@ Just use as any other field, but with these restrictions:
 See the usage in a helper script (not a Django view). Encryption (just save):
 
 ```
- # -*- coding: utf-8 -*-
- #!/usr/bin/python
- import os
- import sys 
- import django
- os.environ.setdefault("DJANGO_SETTINGS_MODULE", "your_project.settings")
- from django.conf import settings
- django.setup()
+# -*- coding: utf-8 -*-
+#!/usr/bin/python
+import os
+import sys 
+import django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "your_project.settings")
+from django.conf import settings
+django.setup()
 
- from app.models import MySecretModel
+from app.models import MySecretModel
 
- secret_instance = MySecretModel()
- secret_instance.secret = 'A very secret message we want to store in database.'
- secret_instance.save()
+secret_instance = MySecretModel()
+secret_instance.secret = 'A very secret message we want to store in database.'
+secret_instance.save()
 
 ```
 
 Decryption (just query the model):
 
 ```
- # -*- coding: utf-8 -*-
- #!/usr/bin/python
- import os
- import sys 
- import django
- os.environ.setdefault("DJANGO_SETTINGS_MODULE", "your_project.settings")
- from django.conf import settings
- django.setup()
+# -*- coding: utf-8 -*-
+#!/usr/bin/python
+import os
+import sys 
+import django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "your_project.settings")
+from django.conf import settings
+django.setup()
 
- from app.models import MySecretModel
+from app.models import MySecretModel
 
- secret_instance = MySecretModel.objects.get(id=1)
- print("The SECRET=[{secret}]".format(secret=secret_instance.secret)
-
+secret_instance = MySecretModel.objects.get(id=1)
+print("The SECRET=[{secret}]".format(secret=secret_instance.secret)
 ```
 
 ## Advanced usages
@@ -136,23 +135,23 @@ It is **VERY IMPORTANT** to define the variable if you are changing the algorith
 When adding the field to the model, you can change the default algorithm if necessary. Just passing "algorithm" in the field definition:
 
 ```
- from django.db import models
- from encrypted_field import EncryptedField
+from django.db import models
+from encrypted_field import EncryptedField
 
 
- class MySecretModel(models.Model):
-     secret = EncryptedField(algorithm='SS20')  # Will use Salsa20 algorithm.
+class MySecretModel(models.Model):
+    secret = EncryptedField(algorithm='SS20')  # Will use Salsa20 algorithm.
 ```
 
 You may want to make more difficult to attack the encryption just removing algorithm information from the database:
 
 ```
- from django.db import models
- from encrypted_field import EncryptedField
+from django.db import models
+from encrypted_field import EncryptedField
 
 
- class MySecretModel(models.Model):
-     secret = EncryptedField(algorithm='SS20', hide_algorithm=True)  # Will use Salsa20 algorithm. HIDDEN.
+class MySecretModel(models.Model):
+    secret = EncryptedField(algorithm='SS20', hide_algorithm=True)  # Will use Salsa20 algorithm. HIDDEN.
 ```
 
 So the encrypted results will be stored in the database without any reference to the algorithm that was used. If this is a use case you need, **PLEASE REMEMBER TO SET THE SETTINGS VARIABLE FOR THE ALGORITHM**.
@@ -160,19 +159,19 @@ So the encrypted results will be stored in the database without any reference to
 In your_project/settings.py:
 
 ```
- DJANGO_ENCRYPTED_FIELD_KEY = os.environ.get('ENV_DJANGO_ENCRYPTED_FIELD_KEY')
- DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM'
+DJANGO_ENCRYPTED_FIELD_KEY = os.environ.get('ENV_DJANGO_ENCRYPTED_FIELD_KEY')
+DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM'
 ```
 
 In app/models.py:
 
 ```
- from django.db import models
- from encrypted_field import EncryptedField
+from django.db import models
+from encrypted_field import EncryptedField
 
 
- class MySecretModel(models.Model):
-     secret = EncryptedField(algorithm='AGCM', hide_algorithm=True)  # Will use AGCM algorithm. HIDDEN.
+class MySecretModel(models.Model):
+    secret = EncryptedField(algorithm='AGCM', hide_algorithm=True)  # Will use AGCM algorithm. HIDDEN.
 ```
 
 ### Change the prepended header
@@ -180,12 +179,12 @@ In app/models.py:
 If you want to change the default prepend header for some algorithms, you can pass a new header onto the field definition. See:
 
 ```
- from django.db import models
- from encrypted_field import EncryptedField
+from django.db import models
+from encrypted_field import EncryptedField
 
 
- class MySecretModel(models.Model):
-     secret = EncryptedField(header='My custom header')
+class MySecretModel(models.Model):
+    secret = EncryptedField(header='My custom header')
 ```
 
 ### How the encryption/decryption key is used
@@ -200,4 +199,3 @@ A quick sketch of the process may be:
 4. **ENCRYPTION STARTS**: the field will invoke the encryption scheme reading the key from `settings.DJANGO_ENCRYPTED_FIELD_KEY`.
 5. Retrive from the database: `my_instance = MySecretModel.objects.get(id=1)`
 6. **DECRYPTION STARTS**: the field will invoke the decryption scheme reading the key from `settings.DJANGO_ENCRYPTED_FIELD_KEY`. 
-
