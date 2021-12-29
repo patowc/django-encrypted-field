@@ -117,14 +117,14 @@ The previous example is the quick&easy way of using this custom field. But you m
 
 As for the present release, the following algorithms are supported:
 
-* ALGORITHM_CHACHA20_POLY1305 = 'CC20P'
-* ALGORITHM_CHACHA20 = 'CC20'
-* ALGORITHM_SALSA20 = 'SS20'
-* ALGORITHM_AES_GCM = 'AGCM'
-* ALGORITHM_AES_SIV = 'ASIV'
-* ALGORITHM_AES_EAX = 'AEAX'
-* ALGORITHM_AES_CCM = 'ACCM'
-* ALGORITHM_AES_OCB = 'AOCB'
+* ALGORITHM_CHACHA20_POLY1305 = 'CC20P' # Key size must be 32 bytes
+* ALGORITHM_CHACHA20 = 'CC20' # Key size must be 32 bytes
+* ALGORITHM_SALSA20 = 'SS20' # Key size must be 32 bytes
+* ALGORITHM_AES_GCM = 'AGCM' # Key size must be 16, 24 or 32 bytes
+* ALGORITHM_AES_SIV = 'ASIV' # Key size must be 16, 24 or 32 bytes
+* ALGORITHM_AES_EAX = 'AEAX' # Key size must be 16, 24 or 32 bytes
+* ALGORITHM_AES_CCM = 'ACCM' # Key size must be 16, 24 or 32 bytes
+* ALGORITHM_AES_OCB = 'AOCB' # Key size must be 16, 24 or 32 bytes
 
 The assigned text is a short name in text for the algorithm, to pass it in dictionaries and JSON objects, and is the value you should use if going to set the settings variable (remember, `DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM''`).
 
@@ -199,3 +199,30 @@ A quick sketch of the process may be:
 4. **ENCRYPTION STARTS**: the field will invoke the encryption scheme reading the key from `settings.DJANGO_ENCRYPTED_FIELD_KEY`.
 5. Retrive from the database: `my_instance = MySecretModel.objects.get(id=1)`
 6. **DECRYPTION STARTS**: the field will invoke the decryption scheme reading the key from `settings.DJANGO_ENCRYPTED_FIELD_KEY`. 
+
+## Exceptions
+
+Some custom exceptions have been created to be able to differentiate from generic ones.
+
+### MissingKeyException
+
+This exception will be raised when there is no DJANGO_ENCRYPTED_FIELD_KEY in settings.
+
+### InvalidKeyFormatException
+
+This exception will be raised when DJANGO_ENCRYPTED_FIELD_KEY in settings is not bytes. **Please, remember** this key is bytes not string.
+
+### InvalidKeyLengthException
+
+This exception will be raised when DJANGO_ENCRYPTED_FIELD_KEY in settings is has not the required length. Remember:
+
+- Chacha20 Poly/ChaCha20/Salsa20: 32 bytes key length.
+- AES algorithms: 16, 24 or 32 bytes key length.
+
+### UnknownAlgorithmException
+
+This exception will be raised when an unknown algorithm is passed to encrypt/decrypt.
+
+### AESInvalidAlgorithmException
+
+This exception will be raised when an unknown AES algorithm is passed to encrypt/decrypt. Typically, an invalid mode within the AES algorithm.
