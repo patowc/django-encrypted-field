@@ -35,8 +35,14 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = [
-    'EncryptedField'
+    'EncryptedField',
+    'MissingKeyException',
+    'InvalidKeyFormatException',
+    'InvalidKeyLengthException',
+    'UnknownAlgorithmException',
+    'AESInvalidAlgorithmException'
 ]
+
 
 # Default algorithm.
 ALGORITHM_CHACHA20_POLY1305 = 'CC20P'
@@ -91,6 +97,27 @@ ALLOWED_ENCRYPTION_ALGORITHMS = [
 ]
 
 
+# Added specific exception classes to be able to differentiate from
+# generic ones.
+class MissingKeyException(Exception):
+    pass
+
+
+class InvalidKeyFormatException(Exception):
+    pass
+
+
+class InvalidKeyLengthException(Exception):
+    pass
+
+
+class UnknownAlgorithmException(Exception):
+    pass
+
+
+class AESInvalidAlgorithmException(Exception):
+    pass
+
 ##############################################################################
 # Encryption primitives. Parameters are typed (type hintin) and all the
 # required details to be able to decreyt must be in the dictionary:
@@ -116,12 +143,26 @@ def encrypt_chacha20_poly(data: str, header: bytes, key: bytes, hide_algorithm: 
     the algorithm in the database.
     :return: a string including a JSON/Dict object with the results.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'encrypt_chacha20_poly: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_chacha20_poly: key must be BYTES.'
+        )
+
     # key must be 32 bytes long.
     key_len = len(key)
     if key_len != 32:
         if settings.DEBUG is True:
-            logger.error('encrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
-        raise Exception('encrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+            logger.error(
+                'encrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+        )
 
     algorithm = ALGORITHM_CHACHA20_POLY1305
     cipher = ChaCha20_Poly1305.new(key=key)
@@ -158,6 +199,27 @@ def decrypt_chacha20_poly(encrypted_data: dict, key: bytes):
     :param key: the hey (must be 32 bytes long). Bytes.
     :return: the original plaintext as string.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_chacha20_poly: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_chacha20_poly: key must be BYTES.'
+        )
+
+    # key must be 32 bytes long.
+    key_len = len(key)
+    if key_len != 32:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_chacha20_poly: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+        )
+
     nonce = b64decode(encrypted_data['nonce'])
     header = b64decode(encrypted_data['header'])
     ciphertext = b64decode(encrypted_data['ciphertext'])
@@ -181,12 +243,26 @@ def encrypt_chacha20(data: str, key: bytes, hide_algorithm: bool = False):
     the algorithm in the database.
     :return: a string including a JSON/Dict object with the results.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'encrypt_chacha20: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_chacha20: key must be BYTES.'
+        )
+
     # key must be 32 bytes long.
     key_len = len(key)
     if key_len != 32:
         if settings.DEBUG is True:
-            logger.error('encrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
-        raise Exception('encrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+            logger.error(
+                'encrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+        )
 
     algorithm = ALGORITHM_CHACHA20
     cipher = ChaCha20.new(key=key)
@@ -218,6 +294,26 @@ def decrypt_chacha20(encrypted_data: dict, key: bytes):
     :param key: the hey (must be 32 bytes long). Bytes.
     :return: the original plaintext as string.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_chacha20: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_chacha20: key must be BYTES.'
+        )
+
+    # key must be 32 bytes long.
+    key_len = len(key)
+    if key_len != 32:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_chacha20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+        )
     nonce = b64decode(encrypted_data['nonce'])
     ciphertext = b64decode(encrypted_data['ciphertext'])
     cipher = ChaCha20.new(key=key, nonce=nonce)
@@ -237,12 +333,26 @@ def encrypt_salsa20(data: str, key: bytes, hide_algorithm: bool = False):
     the algorithm in the database.
     :return: a string including a JSON/Dict object with the results.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'encrypt_salsa20: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_salsa20: key must be BYTES.'
+        )
+
     # key must be 32 bytes long.
     key_len = len(key)
     if key_len != 32:
         if settings.DEBUG is True:
-            logger.error('encrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
-        raise Exception('encrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len)
+            logger.error(
+                'encrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+        )
 
     algorithm = ALGORITHM_SALSA20
     cipher = Salsa20.new(key=key)
@@ -274,6 +384,26 @@ def decrypt_salsa20(encrypted_data: dict, key: bytes):
     :param key: the hey (must be 32 bytes long). Bytes.
     :return: the original plaintext as string.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_salsa20: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_salsa20: key must be BYTES.'
+        )
+
+    # key must be 32 bytes long.
+    key_len = len(key)
+    if key_len != 32:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_salsa20: key must be 32 bytes/256 bit long. You passed [%d] bytes.' % key_len
+        )
     nonce = b64decode(encrypted_data['nonce'])
     ciphertext = b64decode(encrypted_data['ciphertext'])
     cipher = Salsa20.new(key=key, nonce=nonce)
@@ -297,13 +427,29 @@ def encrypt_aes(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM
     the algorithm in the database.
     :return: a string including a JSON/Dict object with the results.
     """
-    mode = AES.MODE_GCM
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'encrypt_aes: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_aes: key must be BYTES.'
+        )
+
     # key must be 16, 24 or 32 bytes long.
     key_len = len(key)
     if key_len not in AES_VALID_KEY_SIZES_IN_LEN:
         if settings.DEBUG is True:
-            logger.error('encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len)
-        raise Exception('encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len)
+            logger.error(
+                'encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'encrypt_AES: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len
+        )
+
+    # Default mode.
+    mode = AES.MODE_GCM
 
     if algorithm == ALGORITHM_AES_GCM:
         mode = AES.MODE_GCM
@@ -317,8 +463,12 @@ def encrypt_aes(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM
         mode = AES.MODE_OCB
     else:
         if settings.DEBUG is True:
-            logger.error('encrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
-        raise Exception('encrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
+            logger.error(
+                'encrypt_AES: invalid algorithm passed [%s].' % str(algorithm)
+            )
+        raise AESInvalidAlgorithmException(
+            'encrypt_AES: invalid algorithm passed [%s].' % str(algorithm)
+        )
 
     if settings.UNIT_TESTING is True:
         logger.critical('encrypt_AES: header=[%s] MODE=[%s]' % (header, mode))
@@ -360,6 +510,27 @@ def decrypt_aes(encrypted_data: dict, key: bytes):
     :param key: the hey (must be 32 bytes long). Bytes.
     :return: the original plaintext as string.
     """
+    # key must be BYTES
+    if isinstance(key, (bytes, bytearray)) is not True:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_aes: key must be BYTES.'
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_aes: key must be BYTES.'
+        )
+
+    # key must be 16, 24 or 32 bytes long.
+    key_len = len(key)
+    if key_len not in AES_VALID_KEY_SIZES_IN_LEN:
+        if settings.DEBUG is True:
+            logger.error(
+                'decrypt_aes: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len
+            )
+        raise InvalidKeyLengthException(
+            'decrypt_aes: key must be 16, 24 or 32 bytes bit long. You passed [%d] bytes.' % key_len
+        )
+
     mode = None
     nonce = b64decode(encrypted_data['nonce'])
     header = b64decode(encrypted_data['header'])
@@ -383,9 +554,12 @@ def decrypt_aes(encrypted_data: dict, key: bytes):
         mode = AES.MODE_OCB
     else:
         if settings.DEBUG is True:
-            logger.error('decrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
-
-        raise Exception('decrypt_AES: invalid algorithm passed [%s].' % str(algorithm))
+            logger.error(
+                'decrypt_AES: invalid algorithm passed [%s].' % str(algorithm)
+            )
+        raise AESInvalidAlgorithmException(
+            'decrypt_AES: invalid algorithm passed [%s].' % str(algorithm)
+        )
 
     cipher = AES.new(key, mode, nonce=nonce)
     cipher.update(header)
@@ -445,7 +619,6 @@ class EncryptedField(models.Field):
                         "%s does not support this algorithm [%s]." % (self.__class__.__name__,
                                                                       str(algorithm))
                     )
-
                 raise ImproperlyConfigured(
                     "%s does not support primary_key different from False (or None)."
                     % self.__class__.__name__
@@ -463,10 +636,8 @@ class EncryptedField(models.Field):
                 logger.error(
                     "%s does not support primary_key different from False (or None)." % self.__class__.__name__
                 )
-
             raise ImproperlyConfigured(
-                "%s does not support primary_key different from False (or None)."
-                % self.__class__.__name__
+                "%s does not support primary_key different from False (or None)." % self.__class__.__name__
             )
 
         # Note: unique must not be set to True in anyway. This field
@@ -477,10 +648,8 @@ class EncryptedField(models.Field):
                 logger.error(
                     "%s does not support unique different from False (or None)." % self.__class__.__name__
                 )
-
             raise ImproperlyConfigured(
-                "%s does not support unique different from False (or None)."
-                % self.__class__.__name__
+                "%s does not support unique different from False (or None)." % self.__class__.__name__
             )
 
         # Note: db_index must not be set to True in anyway. This field
@@ -492,8 +661,7 @@ class EncryptedField(models.Field):
                     "%s does not support db_index different from False (or None)." % self.__class__.__name__
                 )
             raise ImproperlyConfigured(
-                "%s does not support db_index different from False (or None)."
-                % self.__class__.__name__
+                "%s does not support db_index different from False (or None)." % self.__class__.__name__
             )
 
         super().__init__(*args, **kwargs)
@@ -521,8 +689,18 @@ class EncryptedField(models.Field):
                 logger.error(
                     'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to encrypt.'
                 )
-            raise Exception(
+            raise MissingKeyException(
                 'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
+            )
+
+        # key must be BYTES
+        if isinstance(key, (bytes, bytearray)) is not True:
+            if settings.DEBUG is True:
+                logger.error(
+                    'encrypt: key must be BYTES.'
+                )
+            raise InvalidKeyLengthException(
+                'encrypt: key must be BYTES.'
             )
 
         if self._algorithm == ALGORITHM_CHACHA20_POLY1305:
@@ -547,7 +725,7 @@ class EncryptedField(models.Field):
 
         if settings.DEBUG is True:
             logger.info('encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm))
-        raise Exception(
+        raise UnknownAlgorithmException(
             'encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm)
         )
 
@@ -571,8 +749,18 @@ class EncryptedField(models.Field):
                 logger.error(
                     'encrypted-field.decrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to decrypt.'
                 )
-            raise Exception(
+            raise MissingKeyException(
                 'encrypted-field.decrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
+            )
+
+        # key must be BYTES
+        if isinstance(key, (bytes, bytearray)) is not True:
+            if settings.DEBUG is True:
+                logger.error(
+                    'decrypt: key must be BYTES.'
+                )
+            raise InvalidKeyLengthException(
+                'decrypt: key must be BYTES.'
             )
 
         try:
@@ -596,7 +784,7 @@ class EncryptedField(models.Field):
                     logger.error(
                         'encrypted_field.decrypt: algorithm UNKNOWN.'
                     )
-                raise Exception('encrypted_field.decrypt: algorithm UNKNOWN.')
+                raise UnknownAlgorithmException('encrypted_field.decrypt: algorithm UNKNOWN.')
 
         data_b64_fields['algorithm'] = algorithm
         if algorithm == ALGORITHM_CHACHA20_POLY1305:
@@ -612,7 +800,7 @@ class EncryptedField(models.Field):
             logger.error(
                 'encrypted_field.decrypt: unsupported algorithm [%s]' % str(algorithm)
             )
-        raise Exception('encrypted_field.decrypt: unsupported algorithm [%s]' % str(algorithm))
+        raise UnknownAlgorithmException('encrypted_field.decrypt: unsupported algorithm [%s]' % str(algorithm))
 
     ##########################################################################
     # We need the following functions as intermediaries to the Django ORM/DB
