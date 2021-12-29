@@ -8,7 +8,7 @@ long_description = (
     open('README.md').read()
 )
 
-version = '1.0.2'
+version = '1.0.3'
 
 
 setup(
