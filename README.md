@@ -10,7 +10,7 @@ But the user has some other options to configure.
 There exist a pip package in the registry. Just issue the typical "install" command:
 
 ```
-$ pip install django-encrypted-field (VERIFY)
+$ pip install django-encrypted-field
 ```
 
 ## Configuration
@@ -106,7 +106,9 @@ django.setup()
 from app.models import MySecretModel
 
 secret_instance = MySecretModel.objects.get(id=1)
-print("The SECRET=[{secret}]".format(secret=secret_instance.secret)
+print(
+    "The SECRET=[{secret}]".format(secret=secret_instance.secret)
+)
 ```
 
 ## Advanced usages
