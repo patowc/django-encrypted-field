@@ -32,7 +32,7 @@ class AllTests(unittest.TestCase):
         """
         self.assertEqual(settings.DEBUG, True)
         self.assertNotEqual(settings.DJANGO_ENCRYPTED_FIELD_KEY, None)
-        self.assertNotEqual(settings.DJANGO_ENCRYPTED_FIELD_KEY, None)
+        self.assertNotEqual(settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM, None)
 
     def test_environment(self):
         """
@@ -163,6 +163,35 @@ class AllTests(unittest.TestCase):
         self.assertGreater(base_model9.id, 0)
         test_base_instance9 = MyModel9.objects.get(id=base_model9.id)
         self.assertEqual(secret_message, test_base_instance9.seed)
+
+    def test_invalid_parameters(self):
+        """
+        Test for encrypted_field invalid prameters.
+
+        :return:  nothing as is a test case.
+
+        """
+        secret_message = 'A very critical secret.'
+
+        settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'CC20P'
+        # Bytes ok, wrong len 11 (must be 32)
+        settings.DJANGO_ENCRYPTED_FIELD_KEY = b'12345678901'
+        base_model = MyModel()
+        base_model.seed = secret_message
+        with self.assertRaises(InvalidKeyLengthException) as context:
+            base_model.save()
+        self.assertTrue('key must be 32 bytes/256 bit long' in str(context.exception))
+
+        # Bytes wrong, len 32 OK
+        settings.DJANGO_ENCRYPTED_FIELD_KEY = '12345678901234567890123456789012'
+        base_model = MyModel()
+        base_model.seed = secret_message
+        with self.assertRaises(InvalidKeyLengthException) as context:
+            base_model.save()
+        self.assertTrue('must be BYTES' in str(context.exception))
+
+        # Restore KEY to avoid conflicts with other tests.
+        settings.DJANGO_ENCRYPTED_FIELD_KEY = b'12345678901234567890123456789012'
 
 
 if __name__ == "__main__":
