@@ -118,6 +118,7 @@ class UnknownAlgorithmException(Exception):
 class AESInvalidAlgorithmException(Exception):
     pass
 
+
 ##############################################################################
 # Encryption primitives. Parameters are typed (type hintin) and all the
 # required details to be able to decreyt must be in the dictionary:
@@ -129,7 +130,7 @@ class AESInvalidAlgorithmException(Exception):
 #     encrypted_data['tag']
 #     ...
 ##############################################################################
-def encrypt_chacha20_poly(data: str, header: bytes, key: bytes, hide_algorithm: bool = False):
+def encrypt_chacha20_poly(data: str, header: bytes, key: bytes, hide_algorithm: bool = False) -> str:
     """
     Primitive to encrypt with ChaCha20 Poly1305.
 
@@ -184,7 +185,7 @@ def encrypt_chacha20_poly(data: str, header: bytes, key: bytes, hide_algorithm: 
     return json.dumps(dict_values)
 
 
-def decrypt_chacha20_poly(encrypted_data: dict, key: bytes):
+def decrypt_chacha20_poly(encrypted_data: dict, key: bytes) -> str:
     """
     Primitive to decrypt with ChaCha20 Poly1305.
 
@@ -231,7 +232,7 @@ def decrypt_chacha20_poly(encrypted_data: dict, key: bytes):
     return plaintext.decode("utf-8")
 
 
-def encrypt_chacha20(data: str, key: bytes, hide_algorithm: bool = False):
+def encrypt_chacha20(data: str, key: bytes, hide_algorithm: bool = False) -> str:
     """
     Primitive to encrypt with ChaCha20.
 
@@ -280,7 +281,7 @@ def encrypt_chacha20(data: str, key: bytes, hide_algorithm: bool = False):
     return json.dumps(dict_values)
 
 
-def decrypt_chacha20(encrypted_data: dict, key: bytes):
+def decrypt_chacha20(encrypted_data: dict, key: bytes) -> str:
     """
     Primitive to decrypt with ChaCha20.
 
@@ -321,7 +322,7 @@ def decrypt_chacha20(encrypted_data: dict, key: bytes):
     return plaintext.decode("utf-8")
 
 
-def encrypt_salsa20(data: str, key: bytes, hide_algorithm: bool = False):
+def encrypt_salsa20(data: str, key: bytes, hide_algorithm: bool = False) -> str:
     """
     Primitive to encrypt with Salsa20.
 
@@ -370,7 +371,7 @@ def encrypt_salsa20(data: str, key: bytes, hide_algorithm: bool = False):
     return json.dumps(dict_values)
 
 
-def decrypt_salsa20(encrypted_data: dict, key: bytes):
+def decrypt_salsa20(encrypted_data: dict, key: bytes) -> str:
     """
     Primitive to decrypt with Salsa20.
 
@@ -411,7 +412,8 @@ def decrypt_salsa20(encrypted_data: dict, key: bytes):
     return plaintext.decode("utf-8")
 
 
-def encrypt_aes(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM_AES_GCM, hide_algorithm: bool = False):
+def encrypt_aes(data: str, header: bytes, key: bytes,
+                algorithm: str = ALGORITHM_AES_GCM, hide_algorithm: bool = False) -> str:
     """
     Primitive to encrypt with AES in several modes.
 
@@ -496,7 +498,7 @@ def encrypt_aes(data: str, header: bytes, key: bytes, algorithm: str = ALGORITHM
     return json.dumps(dict_values)
 
 
-def decrypt_aes(encrypted_data: dict, key: bytes):
+def decrypt_aes(encrypted_data: dict, key: bytes) -> str:
     """
     Primitive to decrypt with AES in different modes.
 
@@ -666,7 +668,7 @@ class EncryptedField(models.Field):
 
         super().__init__(*args, **kwargs)
 
-    def encrypt(self, data: str):
+    def encrypt(self, data: str) -> str:
         """
         The encryption function. We opted for a simpler approach, letting the
         user pass a standard string, instead of requiring "bytes" or similar.
@@ -729,7 +731,7 @@ class EncryptedField(models.Field):
             'encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm)
         )
 
-    def decrypt(self, encrypted_data: str):
+    def decrypt(self, encrypted_data: str) -> str:
         """
         The decryption function. We opted for a simpler approach, passing
         the encrypted data as string. Then conversion to bytes will be
@@ -806,7 +808,7 @@ class EncryptedField(models.Field):
     # We need the following functions as intermediaries to the Django ORM/DB
     # and from the database to the ORM -> objects.
     ##########################################################################
-    def get_internal_type(self):
+    def get_internal_type(self) -> str:
         return self._internal_type
 
     def get_db_prep_save(self, value, connection):
