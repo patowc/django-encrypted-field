@@ -164,6 +164,71 @@ class AllTests(unittest.TestCase):
         test_base_instance9 = MyModel9.objects.get(id=base_model9.id)
         self.assertEqual(secret_message, test_base_instance9.seed)
 
+    def test_field_level_key(self):
+        """
+        Test for EncryptedField with a custom key passed at field definition.
+        MyModel10 uses key=b'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456'.
+
+        :return: nothing as is a test case.
+
+        """
+        secret_message = 'Field-level key secret.'
+
+        base_model10 = MyModel10()
+        base_model10.seed = secret_message
+        base_model10.save()
+        self.assertGreater(base_model10.id, 0)
+        test_base_instance10 = MyModel10.objects.get(id=base_model10.id)
+        self.assertEqual(secret_message, test_base_instance10.seed)
+
+    def test_instance_level_key(self):
+        """
+        Test for EncryptedField with a per-instance key set interactively
+        via model_instance._encryption_key.
+
+        :return: nothing as is a test case.
+
+        """
+        secret_message = 'Instance-level key secret.'
+        custom_key = b'InstanceKey1234567890ABCDEFGHIJK'
+
+        # Encrypt with a per-instance key.
+        base_model = MyModel()
+        base_model._encryption_key = custom_key
+        base_model.seed = secret_message
+        base_model.save()
+        self.assertGreater(base_model.id, 0)
+
+        # Auto-decryption uses the settings key, which will fail to decrypt.
+        # So we manually decrypt with the correct key.
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'SELECT seed FROM tests_mymodel WHERE id = %s',
+                [base_model.id]
+            )
+            raw_encrypted = cursor.fetchone()[0]
+
+        field = MyModel._meta.get_field('seed')
+        decrypted = field.decrypt(raw_encrypted, key=custom_key)
+        self.assertEqual(secret_message, decrypted)
+
+    def test_manual_encrypt_decrypt(self):
+        """
+        Test manual encrypt/decrypt with an arbitrary key passed directly
+        to the encrypt() and decrypt() methods.
+
+        :return: nothing as is a test case.
+
+        """
+        secret_message = 'Manual encrypt/decrypt test.'
+        custom_key = b'ManualKeyTesting1234567890ABCDEF'
+
+        field = MyModel._meta.get_field('seed')
+        encrypted = field.encrypt(secret_message, key=custom_key)
+        decrypted = field.decrypt(encrypted, key=custom_key)
+        self.assertEqual(secret_message, decrypted)
+
     def test_invalid_parameters(self):
         """
         Test for encrypted_field invalid prameters.
@@ -186,12 +251,23 @@ class AllTests(unittest.TestCase):
         settings.DJANGO_ENCRYPTED_FIELD_KEY = '12345678901234567890123456789012'
         base_model = MyModel()
         base_model.seed = secret_message
-        with self.assertRaises(InvalidKeyLengthException) as context:
+        with self.assertRaises(InvalidKeyFormatException) as context:
             base_model.save()
         self.assertTrue('must be BYTES' in str(context.exception))
 
         # Restore KEY to avoid conflicts with other tests.
         settings.DJANGO_ENCRYPTED_FIELD_KEY = b'12345678901234567890123456789012'
+
+    def test_invalid_field_key_format(self):
+        """
+        Test that passing a non-bytes key to EncryptedField raises
+        InvalidKeyFormatException.
+
+        :return: nothing as is a test case.
+
+        """
+        with self.assertRaises(InvalidKeyFormatException):
+            EncryptedField(key='not_bytes_key_here')
 
 
 if __name__ == "__main__":

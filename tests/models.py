@@ -45,3 +45,7 @@ class MyModel8(models.Model):
 
 class MyModel9(models.Model):
     seed = EncryptedField(algorithm=ALGORITHM_AES_OCB)
+
+
+class MyModel10(models.Model):
+    seed = EncryptedField(key=b'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456')

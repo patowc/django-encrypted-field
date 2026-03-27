@@ -3,7 +3,7 @@ This file includes all the details and definitions for a model.EncryptedField
 that can be used in django projects.
 
 This version uses ChaCha20 Poly1305 algorithm by default, and supports
-ChaCha20, Salsal20, AES in modes GCM, SIV, EAS, CCM and OCB.
+ChaCha20, Salsa20, AES in modes GCM, SIV, EAX, CCM and OCB.
 
 It is easy to use:
 (1) ~$ pip install django-encrypted-field
@@ -13,6 +13,15 @@ It is easy to use:
 
 Now, whenever you save or retrieve values they will be managed through an
 encryption-decryption process transparent to the user.
+
+You can also pass a custom key per field or per instance:
+(a) class MyModel(models.Model):
+        encrypted_field = EncryptedField(key=b'32_byte_key_here............')
+
+(b) obj = MyModel()
+    obj._encryption_key = b'user_provided_32byte_key........'
+    obj.secret = "plaintext"
+    obj.save()
 """
 import typing
 import json
@@ -472,7 +481,7 @@ def encrypt_aes(data: str, header: bytes, key: bytes,
             'encrypt_AES: invalid algorithm passed [%s].' % str(algorithm)
         )
 
-    if settings.UNIT_TESTING is True:
+    if getattr(settings, 'UNIT_TESTING', False) is True:
         logger.critical('encrypt_AES: header=[%s] MODE=[%s]' % (header, mode))
 
     if algorithm == ALGORITHM_AES_SIV:
@@ -540,7 +549,7 @@ def decrypt_aes(encrypted_data: dict, key: bytes) -> str:
     tag = b64decode(encrypted_data['tag'])
     algorithm = encrypted_data['algorithm']
 
-    if settings.UNIT_TESTING is True:
+    if getattr(settings, 'UNIT_TESTING', False) is True:
         logger.critical('decrypt_AES: using algorithm [%s].' % algorithm)
         logger.critical('decrypt_AES: Encrypted data [%s].' % encrypted_data)
 
@@ -579,22 +588,30 @@ class EncryptedField(models.Field):
     special interest in:
 
     - header: if we want to fix the header when setting the field.
-    - algorithm: if we want to pass the algorithm. It not passed, will
+    - algorithm: if we want to pass the algorithm. If not passed, will
     default to ALGORITHM_CHACHA20_POLY1305.
     - hide_algorithm: if we want to omit the algorithm details in the db,
     falling back to read a settings variable to confirm which one is in place.
+    - key: if we want to pass a custom encryption key for this field,
+    instead of using the global settings.DJANGO_ENCRYPTED_FIELD_KEY.
+
+    Key resolution order (most specific wins):
+    1. Per-instance: instance._encryption_key attribute (set interactively)
+    2. Per-field: EncryptedField(key=b'...')
+    3. Global: settings.DJANGO_ENCRYPTED_FIELD_KEY
     """
     description: str = 'An encrypted field that uses ChaCha20 poly1305.'
     _algorithm: typing.Optional[str] = ALGORITHM_CHACHA20_POLY1305
     _hide_algorithm: typing.Optional[bool] = False
     _internal_type: str = 'TextField'
     _header: typing.Optional[bytes] = b'JDDjangoEncryptedField'
-    _key: bytes = None
+    _key: typing.Optional[bytes] = None
 
     def __init__(self,
                  header: typing.Optional[bytes] = None,
                  algorithm: typing.Optional[str] = ALGORITHM_CHACHA20_POLY1305,
                  hide_algorithm: typing.Optional[bool] = False,
+                 key: typing.Optional[bytes] = None,
                  *args, **kwargs):
         """
         __init__ function to set the field. The only relevant parameter here
@@ -604,6 +621,10 @@ class EncryptedField(models.Field):
         to a True value, will raise an Exception.
 
         :param header: optional. The initiation header for the algorithm.
+        :param algorithm: optional. The encryption algorithm to use.
+        :param hide_algorithm: optional. Hide algorithm details in the database.
+        :param key: optional. A custom encryption key (bytes). If provided,
+        this key will be used instead of settings.DJANGO_ENCRYPTED_FIELD_KEY.
         :param args: variable arguments.
         :param kwargs: variable arguments in a dictionary.
         """
@@ -622,13 +643,21 @@ class EncryptedField(models.Field):
                                                                       str(algorithm))
                     )
                 raise ImproperlyConfigured(
-                    "%s does not support primary_key different from False (or None)."
-                    % self.__class__.__name__
+                    "%s does not support this algorithm [%s]."
+                    % (self.__class__.__name__, str(algorithm))
                 )
 
         # If we want to store only data, not the encryption algorithm details.
         if hide_algorithm is True:
             self._hide_algorithm = True
+
+        # Custom key for this field instance.
+        if key is not None:
+            if isinstance(key, (bytes, bytearray)) is not True:
+                raise InvalidKeyFormatException(
+                    '%s: key must be bytes.' % self.__class__.__name__
+                )
+            self._key = key
 
         # Note: primary_key must not be set to True in anyway. This field
         # is not viable for this purpose.
@@ -668,7 +697,60 @@ class EncryptedField(models.Field):
 
         super().__init__(*args, **kwargs)
 
-    def encrypt(self, data: str) -> str:
+    def deconstruct(self) -> typing.Tuple[str, str, list, dict]:
+        """
+        Return enough information to recreate this field for migrations.
+        The key is intentionally excluded for security — it should never
+        be stored in migration files.
+        """
+        name, path, args, kwargs = super().deconstruct()
+        if self._header != b'JDDjangoEncryptedField':
+            kwargs['header'] = self._header
+        if self._algorithm != ALGORITHM_CHACHA20_POLY1305:
+            kwargs['algorithm'] = self._algorithm
+        if self._hide_algorithm is True:
+            kwargs['hide_algorithm'] = self._hide_algorithm
+        return name, path, args, kwargs
+
+    def _resolve_key(self, key: typing.Optional[bytes] = None) -> bytes:
+        """
+        Resolve the encryption key using the priority order:
+        1. Explicitly passed key parameter
+        2. Field-level key (self._key)
+        3. Global settings.DJANGO_ENCRYPTED_FIELD_KEY
+
+        :param key: optional explicit key override.
+        :return: the resolved key as bytes.
+        :raises MissingKeyException: if no key can be found.
+        :raises InvalidKeyFormatException: if the key is not bytes.
+        """
+        resolved_key = key
+
+        if resolved_key is None:
+            resolved_key = self._key
+
+        if resolved_key is None:
+            try:
+                resolved_key = settings.DJANGO_ENCRYPTED_FIELD_KEY
+            except AttributeError:
+                if settings.DEBUG is True:
+                    logger.error(
+                        'encrypted-field: no key found. Provide a key via the field, '
+                        'the model instance, or settings.DJANGO_ENCRYPTED_FIELD_KEY.'
+                    )
+                raise MissingKeyException(
+                    'encrypted-field: no key found. Provide a key via the field, '
+                    'the model instance, or settings.DJANGO_ENCRYPTED_FIELD_KEY.'
+                )
+
+        if isinstance(resolved_key, (bytes, bytearray)) is not True:
+            if settings.DEBUG is True:
+                logger.error('encrypt/decrypt: key must be BYTES.')
+            raise InvalidKeyFormatException('encrypt/decrypt: key must be BYTES.')
+
+        return resolved_key
+
+    def encrypt(self, data: str, key: typing.Optional[bytes] = None) -> str:
         """
         The encryption function. We opted for a simpler approach, letting the
         user pass a standard string, instead of requiring "bytes" or similar.
@@ -680,48 +762,30 @@ class EncryptedField(models.Field):
         scenarios and needs).
 
         :param data: the data we want to encrypt, as string.
+        :param key: optional. A custom key to use for this encryption.
+        If not provided, falls back to field-level key, then settings key.
         :return: will return a string including all the required elements and
         the encrypted string in a dictionary.
         """
-        key = None
-        try:
-            key = settings.DJANGO_ENCRYPTED_FIELD_KEY
-        except Exception as e:
-            if settings.DEBUG is True:
-                logger.error(
-                    'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to encrypt.'
-                )
-            raise MissingKeyException(
-                'encrypted-field.encrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
-            )
-
-        # key must be BYTES
-        if isinstance(key, (bytes, bytearray)) is not True:
-            if settings.DEBUG is True:
-                logger.error(
-                    'encrypt: key must be BYTES.'
-                )
-            raise InvalidKeyLengthException(
-                'encrypt: key must be BYTES.'
-            )
+        resolved_key = self._resolve_key(key)
 
         if self._algorithm == ALGORITHM_CHACHA20_POLY1305:
             return encrypt_chacha20_poly(data=data,
                                          header=self._header,
-                                         key=key,
+                                         key=resolved_key,
                                          hide_algorithm=self._hide_algorithm)
         elif self._algorithm == ALGORITHM_CHACHA20:
             return encrypt_chacha20(data=data,
-                                    key=key,
+                                    key=resolved_key,
                                     hide_algorithm=self._hide_algorithm)
         elif self._algorithm == ALGORITHM_SALSA20:
             return encrypt_salsa20(data=data,
-                                   key=key,
+                                   key=resolved_key,
                                    hide_algorithm=self._hide_algorithm)
         elif self._algorithm in ALGORITHM_AES_ALGORITHMS:
             return encrypt_aes(data=data,
                                header=self._header,
-                               key=key,
+                               key=resolved_key,
                                algorithm=self._algorithm,
                                hide_algorithm=self._hide_algorithm)
 
@@ -731,39 +795,21 @@ class EncryptedField(models.Field):
             'encrypted-field: unknown algorithm when calling encrypt: [%s].' % str(self._algorithm)
         )
 
-    def decrypt(self, encrypted_data: str) -> str:
+    def decrypt(self, encrypted_data: str, key: typing.Optional[bytes] = None) -> str:
         """
         The decryption function. We opted for a simpler approach, passing
         the encrypted data as string. Then conversion to bytes will be
         performed in the specific functions to be able to operate.
 
         :param encrypted_data: the encrypted data we want to decrypt.
+        :param key: optional. A custom key to use for this decryption.
+        If not provided, falls back to field-level key, then settings key.
         :return: will return a string with the decrypted data.
         """
         data_b64_fields = None
         algorithm = None
 
-        key = None
-        try:
-            key = settings.DJANGO_ENCRYPTED_FIELD_KEY
-        except Exception as e:
-            if settings.DEBUG is True:
-                logger.error(
-                    'encrypted-field.decrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory to be able to decrypt.'
-                )
-            raise MissingKeyException(
-                'encrypted-field.decrypt: settings.DJANGO_ENCRYPTED_FIELD_KEY not found. The key is mandatory.'
-            )
-
-        # key must be BYTES
-        if isinstance(key, (bytes, bytearray)) is not True:
-            if settings.DEBUG is True:
-                logger.error(
-                    'decrypt: key must be BYTES.'
-                )
-            raise InvalidKeyLengthException(
-                'decrypt: key must be BYTES.'
-            )
+        resolved_key = self._resolve_key(key)
 
         try:
             data_b64_fields = json.loads(encrypted_data)
@@ -781,7 +827,7 @@ class EncryptedField(models.Field):
         if not algorithm:
             try:
                 algorithm = settings.DJANGO_ENCRYPTED_FIELD_ALGORITHM
-            except Exception as e:
+            except AttributeError:
                 if settings.DEBUG is True:
                     logger.error(
                         'encrypted_field.decrypt: algorithm UNKNOWN.'
@@ -790,13 +836,13 @@ class EncryptedField(models.Field):
 
         data_b64_fields['algorithm'] = algorithm
         if algorithm == ALGORITHM_CHACHA20_POLY1305:
-            return decrypt_chacha20_poly(encrypted_data=data_b64_fields, key=key)
+            return decrypt_chacha20_poly(encrypted_data=data_b64_fields, key=resolved_key)
         elif algorithm == ALGORITHM_CHACHA20:
-            return decrypt_chacha20(encrypted_data=data_b64_fields, key=key)
+            return decrypt_chacha20(encrypted_data=data_b64_fields, key=resolved_key)
         elif algorithm == ALGORITHM_SALSA20:
-            return decrypt_salsa20(encrypted_data=data_b64_fields, key=key)
+            return decrypt_salsa20(encrypted_data=data_b64_fields, key=resolved_key)
         elif algorithm in ALGORITHM_AES_ALGORITHMS:
-            return decrypt_aes(encrypted_data=data_b64_fields, key=key)
+            return decrypt_aes(encrypted_data=data_b64_fields, key=resolved_key)
 
         if settings.DEBUG is True:
             logger.error(
@@ -811,14 +857,39 @@ class EncryptedField(models.Field):
     def get_internal_type(self) -> str:
         return self._internal_type
 
-    def get_db_prep_save(self, value, connection):
+    def pre_save(self, model_instance, add) -> typing.Optional[str]:
+        """
+        Called before saving. Encrypts the field value, using a per-instance
+        key (model_instance._encryption_key) if available, otherwise falling
+        back to the field-level key or global settings key.
+
+        :param model_instance: the model instance being saved.
+        :param add: True if the instance is being added (INSERT), False for UPDATE.
+        :return: the encrypted value, or None if the value is empty.
+        """
+        value = getattr(model_instance, self.attname)
         if value == "" or value is None:
             return None
 
-        return_value = self.encrypt(value)
-        return super().get_db_prep_save(return_value, connection)
+        instance_key = getattr(model_instance, '_encryption_key', None)
+        encrypted_value = self.encrypt(value, key=instance_key)
+        setattr(model_instance, self.attname, encrypted_value)
+        return encrypted_value
 
-    def from_db_value(self, value, expression, connection, *args):
+    def from_db_value(self, value, expression, connection, *args) -> typing.Optional[str]:
+        """
+        Called when data is loaded from the database. Decrypts using the
+        field-level key or global settings key.
+
+        Note: per-instance keys are not available during from_db_value.
+        For data encrypted with a per-instance key, use field.decrypt()
+        manually with the appropriate key.
+
+        :param value: the raw value from the database.
+        :param expression: the expression used to fetch the value.
+        :param connection: the database connection.
+        :return: the decrypted value, or None if the value is empty.
+        """
         if value == "" or value is None:
             return None
 
