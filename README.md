@@ -317,6 +317,16 @@ plaintext = field.decrypt(raw_encrypted, key=user_key)
 print(plaintext)  # 'Top secret user data'
 ```
 
+## Write paths and what gets encrypted
+
+Every value that reaches the database column is encrypted exactly once, whatever the write path:
+
+- `instance.save()` and `bulk_create()`: `pre_save()` encrypts using the resolved key (per-instance > per-field > settings). The model instance is **not** modified: after `save()` the attribute still holds the plaintext, and saving again re-encrypts from that plaintext (fresh nonce each time). `pre_save()` is idempotent and free of side effects, as required by Django 6.0, which may call it more than once per `save()`.
+- `QuerySet.update(field='plaintext')` and `bulk_update()`: these bypass `pre_save()`, so `get_db_prep_save()` encrypts the value. There is no instance in this path, so **per-instance keys are not available here**; the per-field or settings key is used.
+- Expressions (`F()`, `Case()`, ...) cannot be encrypted and are handed to Django unchanged.
+
+When reading, `from_db_value()` decrypts with the per-field or settings key. If the stored value is not an envelope produced by this field (plaintext, corrupted or legacy data) the attribute is loaded as `None` and, with `DEBUG=True`, an error is logged.
+
 ## How the encryption/decryption key is used
 
 The key is resolved at the moment each encryption/decryption operation is performed, following the resolution order described above. It is never stored in the database or in migration files.

@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-01
+### Fixed
+- `pre_save()` no longer writes the encrypted value back into the model instance.
+  Django only requires `pre_save()` to return the value to persist; mutating the
+  instance left ciphertext in the attribute after `save()`/`bulk_create()` and
+  caused double encryption (data corruption) on a second `save()`.
+  On Django 6.0, where `pre_save()` may be called more than once per
+  `save()`, this corrupted data on the very first `save()`. `pre_save()` is now
+  idempotent and side-effect free, as Django 6.0 requires.
+- `QuerySet.update()` and `QuerySet.bulk_update()` stored plaintext in the
+  database since 1.1.0 because they bypass `pre_save()`. `get_db_prep_save()` is
+  back and encrypts any plain string reaching the database exactly once (values
+  already encrypted by `pre_save()` are tagged and passed through).
+- `decrypt()` crashed with `AttributeError` when `DEBUG=False` and the stored
+  value was not a JSON envelope (plaintext, corrupted or legacy data). It now
+  returns `None` consistently, as it already did with `DEBUG=True`.
+### Added
+- Regression tests for the issues above, including `pre_save()` idempotency.
+- Django 6.0 classifier (test suite runs on 4.2, 5.2 and 6.0).
+
 ## [1.1.0] - 2026-03-27
 ### Added
 - Custom key support: pass a `key` parameter to `EncryptedField` for per-field keys.

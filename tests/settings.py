@@ -1,5 +1,8 @@
 DEBUG = True
 UNIT_TESTING = True
+# Pinned so `makemigrations` in tests.py is stable across Django versions
+# (Django 6.0 changed the default to BigAutoField).
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 DJANGO_ENCRYPTED_FIELD_KEY = b'12345678901234567890123456789012'
 DJANGO_ENCRYPTED_FIELD_ALGORITHM = 'AGCM'
 

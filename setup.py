@@ -8,7 +8,7 @@ long_description = (
     open('README.md').read()
 )
 
-version = '1.1.0'
+version = '1.1.1'
 
 
 setup(
@@ -48,6 +48,7 @@ setup(
         'Framework :: Django :: 5.0',
         'Framework :: Django :: 5.1',
         'Framework :: Django :: 5.2',
+        'Framework :: Django :: 6.0',
     ],
     zip_safe=False,
 )

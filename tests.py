@@ -4,6 +4,7 @@ Tests module for django-encrypted-field package.
 """
 import os
 import sys
+import json
 import logging
 import unittest
 
@@ -12,6 +13,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tests.settings")
 from django.conf import settings
 django.setup()
 from django.core.management import call_command  # pylint: disable=E0402
+from django.db import connection  # pylint: disable=E0402
 
 
 logger = logging.getLogger(__name__)
@@ -268,6 +270,152 @@ class AllTests(unittest.TestCase):
         """
         with self.assertRaises(InvalidKeyFormatException):
             EncryptedField(key='not_bytes_key_here')
+
+    def test_save_does_not_mutate_instance(self):
+        """
+        Regression test (1.1.1): pre_save() must not write the encrypted
+        value back into the instance. After save() the attribute has to keep
+        the plaintext, and a second save() must not double-encrypt.
+
+        :return:  nothing as is a test case.
+
+        """
+        secret_message = 'Keep me in plaintext on the instance.'
+
+        base_model = MyModel(seed=secret_message)
+        base_model.save()
+        self.assertEqual(base_model.seed, secret_message)
+
+        # Second save() on the same instance (full and with update_fields).
+        base_model.save()
+        base_model.save(update_fields=['seed'])
+        self.assertEqual(base_model.seed, secret_message)
+        self.assertEqual(MyModel.objects.get(id=base_model.id).seed, secret_message)
+
+        base_model.refresh_from_db()
+        self.assertEqual(base_model.seed, secret_message)
+
+        # bulk_create() goes through pre_save() as well.
+        created = MyModel.objects.bulk_create([MyModel(seed=secret_message)])
+        self.assertEqual(created[0].seed, secret_message)
+        self.assertEqual(MyModel.objects.get(id=created[0].id).seed, secret_message)
+
+    def test_save_stores_ciphertext(self):
+        """
+        Regression test (1.1.1): the database column must hold our JSON
+        envelope, never the plaintext, for every write path.
+
+        :return:  nothing as is a test case.
+
+        """
+        secret_message = 'Never in plaintext in the database.'
+
+        def raw_value(pk):
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT seed FROM tests_mymodel WHERE id = %s', [pk])
+                return cursor.fetchone()[0]
+
+        def assert_encrypted(pk):
+            raw = raw_value(pk)
+            self.assertNotEqual(raw, secret_message)
+            self.assertNotIn(secret_message, raw)
+            self.assertIn('ciphertext', json.loads(raw))
+
+        # Model.save()
+        base_model = MyModel.objects.create(seed=secret_message)
+        assert_encrypted(base_model.id)
+
+        # QuerySet.update(): does not call pre_save(), only get_db_prep_save().
+        MyModel.objects.filter(id=base_model.id).update(seed='updated ' + secret_message)
+        raw = raw_value(base_model.id)
+        self.assertNotIn(secret_message, raw)
+        self.assertIn('ciphertext', json.loads(raw))
+        self.assertEqual(MyModel.objects.get(id=base_model.id).seed, 'updated ' + secret_message)
+
+        # QuerySet.bulk_update(): Value(..., for_save=True) -> get_db_prep_save().
+        base_model.seed = 'bulk ' + secret_message
+        MyModel.objects.bulk_update([base_model], ['seed'])
+        raw = raw_value(base_model.id)
+        self.assertNotIn(secret_message, raw)
+        self.assertIn('ciphertext', json.loads(raw))
+        self.assertEqual(MyModel.objects.get(id=base_model.id).seed, 'bulk ' + secret_message)
+
+    def test_per_instance_key_does_not_mutate_instance(self):
+        """
+        Regression test (1.1.1): same as test_save_does_not_mutate_instance
+        but using a per-instance key.
+
+        :return:  nothing as is a test case.
+
+        """
+        secret_message = 'Per-instance secret.'
+        user_key = b'USERKEYUSERKEYUSERKEYUSERKEY1234'
+
+        base_model = MyModel(seed=secret_message)
+        base_model._encryption_key = user_key
+        base_model.save()
+        self.assertEqual(base_model.seed, secret_message)
+
+        base_model.save()
+        self.assertEqual(base_model.seed, secret_message)
+
+        field = MyModel._meta.get_field('seed')
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT seed FROM tests_mymodel WHERE id = %s', [base_model.id])
+            raw = cursor.fetchone()[0]
+        self.assertEqual(field.decrypt(raw, key=user_key), secret_message)
+
+    def test_pre_save_is_idempotent(self):
+        """
+        Regression test (1.1.1): Django 6.0 may call Field.pre_save() more
+        than once while saving a single instance, so it must be idempotent
+        and free of side effects. Calling it repeatedly must leave the
+        instance untouched and every result must decrypt to the plaintext
+        with a single decrypt() (no double encryption).
+
+        :return:  nothing as is a test case.
+
+        """
+        secret_message = 'pre_save may run twice per save() in Django 6.0.'
+        field = MyModel._meta.get_field('seed')
+
+        base_model = MyModel(seed=secret_message)
+        first = field.pre_save(base_model, add=True)
+        second = field.pre_save(base_model, add=True)
+        self.assertEqual(base_model.seed, secret_message)
+        self.assertEqual(field.decrypt(first), secret_message)
+        self.assertEqual(field.decrypt(second), secret_message)
+
+        # What Django does next: get_db_prep_save() on the pre_save() result
+        # must not encrypt again.
+        prepared = field.get_db_prep_save(second, connection)
+        self.assertEqual(prepared, second)
+        self.assertEqual(field.decrypt(prepared), secret_message)
+
+        # Full round trip (whatever the number of pre_save() calls Django makes).
+        base_model.save()
+        self.assertEqual(base_model.seed, secret_message)
+        self.assertEqual(MyModel.objects.get(id=base_model.id).seed, secret_message)
+
+    def test_decrypt_invalid_payload(self):
+        """
+        Regression test (1.1.1): decrypt() must return None for a payload that
+        is not our JSON envelope, both with DEBUG=True and DEBUG=False
+        (previously it crashed with AttributeError when DEBUG=False).
+
+        :return:  nothing as is a test case.
+
+        """
+        field = MyModel._meta.get_field('seed')
+        original_debug = settings.DEBUG
+        try:
+            for debug in (True, False):
+                settings.DEBUG = debug
+                self.assertIsNone(field.decrypt('this is plaintext, not JSON'))
+                self.assertIsNone(field.decrypt('[1, 2, 3]'))
+                self.assertIsNone(field.from_db_value('this is plaintext, not JSON', None, connection))
+        finally:
+            settings.DEBUG = original_debug
 
 
 if __name__ == "__main__":

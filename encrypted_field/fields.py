@@ -578,6 +578,20 @@ def decrypt_aes(encrypted_data: dict, key: bytes) -> str:
     return plaintext.decode("utf-8")
 
 
+class _EncryptedValue(str):
+    """
+    Marker type for a string that has already been encrypted by
+    EncryptedField.pre_save(). It behaves exactly like str, but lets
+    get_db_prep_save() know it must NOT encrypt it again.
+
+    Django calls pre_save() and then get_db_prep_save() on the same value for
+    Model.save()/bulk_create(), while QuerySet.update() only calls
+    get_db_prep_save(). Using this marker we can encrypt exactly once in
+    both paths.
+    """
+    __slots__ = ()
+
+
 class EncryptedField(models.Field):
     """
     This is the models.Field object for django model. It will behave as a
@@ -816,10 +830,22 @@ class EncryptedField(models.Field):
         except Exception as e:
             if settings.DEBUG is True:
                 logger.error(
-                    'encrypted_field.decrypt: encrypted_data doest not loads as JSON/Dict.'
+                    'encrypted_field.decrypt: encrypted_data does not load as JSON/Dict.'
                 )
                 logger.error('encrypted_field.decrypt: exception [%s]' % str(e))
-                return None
+            # Same outcome regardless of DEBUG: the stored value is not one of
+            # ours (plaintext, corrupted, legacy...), so there is nothing to
+            # decrypt. Previously, with DEBUG=False, execution fell through
+            # and crashed with AttributeError on None.
+            return None
+
+        if not isinstance(data_b64_fields, dict):
+            if settings.DEBUG is True:
+                logger.error(
+                    'encrypted_field.decrypt: encrypted_data is valid JSON but not a dict [%s].'
+                    % type(data_b64_fields).__name__
+                )
+            return None
 
         if 'algorithm' in data_b64_fields.keys():
             algorithm = data_b64_fields.get('algorithm', None)
@@ -871,10 +897,40 @@ class EncryptedField(models.Field):
         if value == "" or value is None:
             return None
 
+        # Never write the encrypted value back into the instance: Django's
+        # contract for pre_save() only requires returning the value to be
+        # persisted. Mutating the instance would leave ciphertext in the
+        # attribute and cause double encryption on a second save().
         instance_key = getattr(model_instance, '_encryption_key', None)
-        encrypted_value = self.encrypt(value, key=instance_key)
-        setattr(model_instance, self.attname, encrypted_value)
-        return encrypted_value
+        return _EncryptedValue(self.encrypt(value, key=instance_key))
+
+    def get_db_prep_save(self, value, connection) -> typing.Optional[str]:
+        """
+        Called for every value that reaches the database, both after
+        pre_save() (Model.save(), bulk_create()) and directly, without
+        pre_save(), for QuerySet.update().
+
+        Values already encrypted by pre_save() are tagged as _EncryptedValue
+        and pass through untouched. Plain strings (typically coming from
+        QuerySet.update(field='plaintext')) are encrypted here with the
+        field-level or global key; per-instance keys are not available in
+        this path because there is no instance.
+
+        Expressions (F(), Case(), ...) are handed to Django unchanged: they
+        cannot be encrypted, so e.g. bulk_update() is NOT supported by this
+        field (it would store whatever the expression yields).
+
+        :param value: the value produced by pre_save() or given to update().
+        :param connection: the database connection.
+        :return: the encrypted value ready for the database, or None.
+        """
+        if value == "" or value is None:
+            return None
+
+        if isinstance(value, str) and not isinstance(value, _EncryptedValue):
+            value = _EncryptedValue(self.encrypt(value))
+
+        return super().get_db_prep_save(value, connection)
 
     def from_db_value(self, value, expression, connection, *args) -> typing.Optional[str]:
         """
