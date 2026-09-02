@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-09-02
+### Fixed
+- Packaging: the wheel and sdist shipped the test-suite as a top-level `tests`
+  package (`tests/__init__.py`, `tests/settings.py`, `tests/models.py`, and its
+  migrations). Installing 1.1.0 or 1.1.1 dropped that package into
+  `site-packages`, where it collided with the `tests` package of any project
+  depending on this library and broke their test runs. `find_packages()` now
+  excludes `tests`; the suite is still included in the sdist, but never
+  installed.
+
 ## [1.1.1] - 2026-09-01
 ### Fixed
 - `pre_save()` no longer writes the encrypted value back into the model instance.

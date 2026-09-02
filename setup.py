@@ -8,7 +8,7 @@ long_description = (
     open('README.md').read()
 )
 
-version = '1.1.1'
+version = '1.1.2'
 
 
 setup(
@@ -23,7 +23,7 @@ setup(
     license='MIT',
     author='Román Ramírez',
     author_email='rramirez@rootedcon.com',
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests', 'tests.*']),
     version=version,
     install_requires=[
         'Django>=4.0',

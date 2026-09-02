@@ -2,3 +2,9 @@ include LICENSE
 include AUTHORS.rst
 include VERSION
 include README.md
+include CHANGES.md
+# Ship the test-suite in the sdist only; it must never be installed as a
+# top-level "tests" package (see 1.1.2 in CHANGES.md).
+include tests.py
+recursive-include tests *.py
+global-exclude __pycache__ *.py[cod]
